@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Payment Page</title>
+    <meta charset="utf-8" />
+    <script src="https://pay.google.com/gp/p/js/pay.js" async></script>
+    <script src="https://www.paypal.com/sdk/js?client-id=YOUR_PAYPAL_CLIENT_ID"></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+    <h1>Complete Your Payment</h1>
+    
+    <!-- Receipt Section -->
+    <div id="receipt">
+        <h2>Receipt</h2>
+        <table id="receipt-table">
+            <thead>
+                <tr>
+                    <th>Product Name</th>
+                    <th>Quantity</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Items will be inserted here dynamically -->
+            </tbody>
+        </table>
+        <p>Total: $<span id="total-price"></span></p>
+    </div>
+    
+    <div id="gpay-button"></div>
+    <div id="paypal-button-container"></div>
+    <button id="razorpay-button">Pay with QR Code</button>
+
+    <script>
+        // Google Pay Integration
+        const paymentsClient = new google.payments.api.PaymentsClient({ environment: 'TEST' });
+
+        const paymentDataRequest = {
+            apiVersion: 2,
+            apiVersionMinor: 0,
+            allowedPaymentMethods: [{
+                type: 'CARD',
+                parameters: {
+                    allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
+                    allowedCardNetworks: ['MASTERCARD', 'VISA']
+                },
+                tokenizationSpecification: {
+                    type: 'PAYMENT_GATEWAY',
+                    parameters: {
+                        gateway: 'example',
+                        gatewayMerchantId: 'exampleGatewayMerchantId'
+                    }
+                }
+            }],
+            merchantInfo: {
+                merchantId: '01234567890123456789',
+                merchantName: 'Example Merchant'
+            },
+            transactionInfo: {
+                totalPriceStatus: 'FINAL',
+                totalPrice: '25.98',
+                currencyCode: 'USD'
+            }
+        };
+
+        const button = paymentsClient.createButton({ onClick: onGooglePayButtonClicked });
+        document.getElementById('gpay-button').appendChild(button);
+
+        function onGooglePayButtonClicked() {
+            paymentsClient.loadPaymentData(paymentDataRequest).then(function(paymentData) {
+                // handle the response
+                processPayment(paymentData);
+            }).catch(function(err) {
+                // show error in developer console for debugging
+                console.error(err);
+            });
+        }
+
+        function processPayment(paymentData) {
+            // handle the payment processing
+            console.log(paymentData);
+        }
+
+        // PayPal Integration
+        paypal.Buttons({
+            createOrder: function(data, actions) {
+                return actions.order.create({
+                    purchase_units: [{
+                        amount: {
+                            value: '25.98'
+                        }
+                    }]
+                });
+            },
+            onApprove: function(data, actions) {
+                return actions.order.capture().then(function(details) {
+                    alert('Transaction completed by ' + details.payer.name.given_name);
+                });
+            }
+        }).render('#paypal-button-container');
+
+        // Razorpay Integration
+        document.getElementById('razorpay-button').onclick = function() {
+            const options = {
+                "key": "YOUR_RAZORPAY_KEY", // Enter the Key ID generated from the Dashboard
+                "amount": "2598", // Amount in paise (i.e., 2598 paise = INR 25.98)
+                "currency": "INR",
+                "name": "Example Merchant",
+                "description": "Test Transaction",
+                "image": "https://example.com/your_logo",
+                "order_id": "ORDER_ID", // Order ID from your server
+                "handler": function (response){
+                    alert(response.razorpay_payment_id);
+                    alert(response.razorpay_order_id);
+                    alert(response.razorpay_signature);
+                },
+                "prefill": {
+                    "name": "Customer Name",
+                    "email": "customer.email@example.com",
+                    "contact": "9999999999"
+                },
+                "notes": {
+                    "address": "Customer Address"
+                },
+                "theme": {
+                    "color": "#3399cc"
+                }
+            };
+            const rzp1 = new Razorpay(options);
+            rzp1.open();
+        };
+
+        document.addEventListener('DOMContentLoaded', (event) => {
+            console.log('DOM fully loaded and parsed');
+            const cart = JSON.parse(localStorage.getItem('cart'));
+            console.log('Cart data:', cart);
+
+            if (!cart) {
+                console.error('Cart is empty or not defined in localStorage');
+                return;
+            }
+
+            let totalPrice = 0;
+            const receiptTableBody = document.querySelector('#receipt-table tbody');
+
+            cart.forEach(item => {
+                totalPrice += item.price * item.qty;
+
+                const row = document.createElement('tr');
+                const productNameCell = document.createElement('td');
+                const qtyCell = document.createElement('td');
+                const amountCell = document.createElement('td');
+
+                productNameCell.textContent = item.item;
+                qtyCell.textContent = item.qty;
+                amountCell.textContent = (item.price * item.qty).toFixed(2);
+
+                row.appendChild(productNameCell);
+                row.appendChild(qtyCell);
+                row.appendChild(amountCell);
+
+                receiptTableBody.appendChild(row);
+            });
+
+            document.getElementById('total-price').innerText = totalPrice.toFixed(2);
+
+            // Update paymentDataRequest for Google Pay
+            paymentDataRequest.transactionInfo.totalPrice = totalPrice.toFixed(2);
+
+            // Update PayPal Buttons
+            paypal.Buttons({
+                createOrder: function(data, actions) {
+                    return actions.order.create({
+                        purchase_units: [{
+                            amount: {
+                                value: totalPrice.toFixed(2)
+                            }
+                        }]
+                    });
+                },
+                onApprove: function(data, actions) {
+                    return actions.order.capture().then(function(details) {
+                        alert('Transaction completed by ' + details.payer.name.given_name);
+                    });
+                }
+            }).render('#paypal-button-container');
+
+            // Update Razorpay options
+            const razorpayOptions = {
+                "key": "YOUR_RAZORPAY_KEY",
+                "amount": totalPrice * 100, // Amount in paise
+                "currency": "INR",
+                "name": "Example Merchant",
+                "description": "Test Transaction",
+                "image": "https://example.com/your_logo",
+                "handler": function (response){
+                    alert(response.razorpay_payment_id);
+                    alert(response.razorpay_order_id);
+                    alert(response.razorpay_signature);
+                },
+                "prefill": {
+                    "name": "Customer Name",
+                    "email": "customer.email@example.com",
+                    "contact": "9999999999"
+                },
+                "notes": {
+                    "address": "Customer Address"
+                },
+                "theme": {
+                    "color": "#3399cc"
+                }
+            };
+            document.getElementById('razorpay-button').onclick = function() {
+                const rzp1 = new Razorpay(razorpayOptions);
+                rzp1.open();
+            };
+        });
+    </script>
+</body>
+</html>
